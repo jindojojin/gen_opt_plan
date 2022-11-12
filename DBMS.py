@@ -81,44 +81,48 @@ class DBMS:
             case '>':
                 return int(v1) > int(v2)
 
-    def print(self, result):
-        print(result[0])
-        for r in result[1]:
-            print(r)
-
     def Cost(self, e: list[Step]):
+        if(e == None):
+            return 0
         cost = 0
         for step in e:
-            match step.action:
-                case 'scan(R)':
-                    cost += self.RelationSize * self._as + self._bs
-                case 'X*(A)':
-                    cost += len(step.columns) * self._ax + self._bx
-                case 'select':
-                    cost += len(step.columns)
+            if(isinstance(step, Step)):
+                match step.action:
+                    case 'scan(R)':
+                        cost += self.RelationSize * self._as + self._bs
+                    case 'X*(A)':
+                        cost += len(step.columns) * self._ax + self._bx
+                    case 'select':
+                        cost += len(step.columns)
+            else:
+                cost += self.Cost(step)
+        return cost
 
     def BuildPlan(self, p: Predicate, e: list[Step], branch: bool):
-        def getXpe():
+        def getXpe(plan):
             predicates_in_e = []
-            for step in e:
-                if(step.predicate.key not in predicates_in_e):
-                    predicates_in_e.append(step.predicate.key)
-            return () if p.key in predicates_in_e else (p.key)
-        Xpe = getXpe()  # Xp|e = Xp \ Xe // outstanding maps ;  Xe = ∪pj∈eXp
+            for step in plan:
+                if(isinstance(step, Step)):
+                    if(step.predicate and step.predicate.key not in predicates_in_e):
+                        predicates_in_e.append(step.predicate.key)
+                elif isinstance(step, list):
+                    predicates_in_e += getXpe(step)[0]
+            return (predicates_in_e, []) if p.key in predicates_in_e else (predicates_in_e, [p.key])
+        Xp, Xpe = getXpe(e)  # Xp|e = Xp \ Xe // outstanding maps ;  Xe = ∪pj∈eXp
 
         if len(e) == 1 and e[0].action == 'scan(R)':
-            e += [Step('select', p)]  # σp(χ∗P (e))
+            return e + [Step('select', p)]  # σp(χ∗P (e))
         elif branch == True:
-            e += [Step('map', Xpe, branch=True),
-                  Step('select', p)]  # σp(Xp|e(σ+pj(e)))
-        else:
-            e += [Step('map', Xpe, branch=False),
-                  Step('select', p)]  # σp(Xp|e(σ-pj(e)))
+            e =  [Step('select', p, branch=True)]  # σp(Xp|e(σ+pj(e)))
+        elif branch == False:
+            e =  [Step('select', p, branch=False)]  # σp(Xp|e(σ-pj(e)))
         return e
 
     def TDSim(self, e: list[Step], Bxp: BooleanExp, Asg: list[Assignment], branch: bool):
-        bestcost = 10e23
+        bestcost = 10e60
         bestplan = None
+        # print("predicates ",list(map(lambda p: p.alias,Bxp.getPredicates())))
+        bestPlans=[]
         for p in Bxp.getPredicates():
             e0 = self.BuildPlan(p, e, branch)
             A = Assignment(p, True)
@@ -126,13 +130,14 @@ class DBMS:
             A = Assignment(p, False)
             eF = self.TDSim(e0, Bxp.applyAsg(A), Asg + [A], False)
             cost = self.Cost(eT) + self.Cost(eF) + self.Cost(e0)
+            bestPlans.append([e0, eT, eF])
             if (bestplan == None or bestcost > cost):
-                bestplan = e0 + eT + eF
+                bestplan = [e0, eT, eF]
                 bestcost = cost
-        return bestplan
+        return bestplan, bestPlans
 
     def TDSimMemo(self, e: list[Step], Bxp: BooleanExp, Asg: list[Assignment], branch: bool):
-        key = self.getAsgMemoKey(Asg)
+        key = getAsgMemoKey(Asg)
         if key in self.Memo:
             return self.Memo
         else:
@@ -140,15 +145,31 @@ class DBMS:
             self.Memo[key] = bestplan
             return bestplan
 
-    def genPlan(algorithm: str, query: str, queryType="dnf"):
+    def genPlan(self, algorithm: str, query: str, queryType="dnf"):
         Bxp = getBxpFromQueryStr(query, queryType)
         match algorithm:
-            case 'TDSim':
-                return 0
+            case "TDSim":
+                return self.TDSim(e=[Step('scan(R)')], Bxp=Bxp, Asg=[], branch=None)
+
+    def showPlan(self, plan, level=0):
+        if(plan == None):
+            return
+        for step in plan:
+            if(isinstance(step, Step)):
+                print("   "*level, step.toString())
+            else:
+                self.showPlan(step, level+1)
 
 
-db = DBMS()
-dnf_plan = db.DNF_Plan(["Cover_Type", "Slope", "Aspect"],
-                       "(Slope > 23 AND Aspect = 3) OR Elevation = 1", type="dnf")
-db.print(dnf_plan)
+if __name__ == "__main__":
+    DNFqueryStr = "(c > 0 AND l != 0) OR r>0"
+    CNFqueryStr = "(a > 0) AND (a > 0 OR b=0) AND c != 3 AND (d = 4 OR e <= 3)"
+
+    db = DBMS()
+    dnf_plan, plans = db.genPlan(
+        algorithm="TDSim", query=DNFqueryStr, queryType="dnf")
+    # db.showPlan(dnf_plan)
+    for p in plans:
+        print("+"*20)
+        db.showPlan(p)
 # print([1,2,3,4][1:2])

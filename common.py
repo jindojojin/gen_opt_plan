@@ -10,11 +10,14 @@ class Predicate:
 
 
 class Step:
-    def __init__(self, action: str, predicate: Predicate, columns: list[str] = [], branch=True):
+    def __init__(self, action: str, predicate: Predicate = None, columns: list[str] = [], branch=None):
         self.action = action
         self.predicate = predicate
         self.columns = columns
-        self.brach = branch
+        self.branch = branch
+
+    def toString(self):
+        return f"{self.action} ({self.predicate.alias if self.predicate != None else ''}, {self.branch if self.branch != None else ''})"
 
 
 class Assignment:
@@ -68,7 +71,7 @@ class BooleanExp:
                                 lambda x: x.alias != Asg.predicate.alias, g))
                     else:
                         groups.append(g)
-        return BooleanExp(filter(lambda group: len(group) > 0, groups), self.expType)
+        return BooleanExp(list(filter(lambda group: len(group) > 0, groups)), self.expType)
 
 
 def getAsgMemoKey(Asgs: list[Assignment]) -> str:
