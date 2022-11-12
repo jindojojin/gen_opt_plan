@@ -29,6 +29,8 @@ class DBMS:
             ["Soil_Type", 40],
             ["Cover_Type", 1]
         ]
+        self.R = self.scan()
+        # print(self.R)
 
     def scan(self):
         result = []
@@ -42,14 +44,13 @@ class DBMS:
             result.append(row)
         return result
 
-    def select(self, columns=[], where: Predicate = None, bypass=False):
+    def select(self, data, columns=["Elevation", "Aspect", "Slope"], where: Predicate = None, bypass=True):
         p: Predicate = where
         result = []
         F_result = []  # false result for bypass
         rawColumns = [column[0] for column in self.collumns]
         columns = columns if len(columns) > 0 else rawColumns
-        rawData = self.scan()
-        for r in rawData:
+        for r in data:
             row = []
             is_ok = True
             for col in columns:
@@ -64,7 +65,7 @@ class DBMS:
                 result.append(row)
             elif (bypass):
                 F_result.append(row)
-        return (columns, result, F_result)
+        return (result, F_result)
 
     def check(self, v1, operator, v2):
         match operator:
@@ -108,21 +109,22 @@ class DBMS:
                 elif isinstance(step, list):
                     predicates_in_e += getXpe(step)[0]
             return (predicates_in_e, []) if p.key in predicates_in_e else (predicates_in_e, [p.key])
-        Xp, Xpe = getXpe(e)  # Xp|e = Xp \ Xe // outstanding maps ;  Xe = ∪pj∈eXp
+        # Xp|e = Xp \ Xe // outstanding maps ;  Xe = ∪pj∈eXp
+        Xp, Xpe = getXpe(e)
 
         if len(e) == 1 and e[0].action == 'scan(R)':
             return e + [Step('select', p)]  # σp(χ∗P (e))
         elif branch == True:
-            return  [Step('select', p, branch=True)]  # σp(Xp|e(σ+pj(e)))
+            return [Step('select', p, branch=True)]  # σp(Xp|e(σ+pj(e)))
         elif branch == False:
-            return  [Step('select', p, branch=False)]  # σp(Xp|e(σ-pj(e)))
+            return [Step('select', p, branch=False)]  # σp(Xp|e(σ-pj(e)))
         return e
 
     def TDSim(self, e: list[Step], Bxp: BooleanExp, Asg: list[Assignment], branch: bool):
         bestcost = 10e60
         bestplan = None
         # print("predicates ",list(map(lambda p: p.alias,Bxp.getPredicates())))
-        bestPlans=[]
+        bestPlans = []
         for p in Bxp.getPredicates():
             e0 = self.BuildPlan(p, e, branch)
             A = Assignment(p, True)
@@ -147,30 +149,70 @@ class DBMS:
 
     def genPlan(self, algorithm: str, query: str, queryType="dnf"):
         Bxp = getBxpFromQueryStr(query, queryType)
-        print(list(map(lambda p: p.alias,Bxp.getPredicates())))
+        print(list(map(lambda p: p.alias, Bxp.getPredicates())))
         match algorithm:
             case "TDSim":
-                return self.TDSim(e=[Step('scan(R)')], Bxp=Bxp, Asg=[], branch=None)
+                self.bestPlan = self.TDSim(
+                    e=[Step('scan(R)')], Bxp=Bxp, Asg=[], branch=None)
+        return self.bestPlan
 
-    def showPlan(self, plan, level=0):
+    result = []  # For executePlan()
+
+    # def executePlan(self, plan=None, prevResultT=None, prevResultF=None, parent=None):
+    #     if(plan == None):
+    #         plan = self.bestPlan
+    #     if(prevResultT == None):
+    #         prevResultT = self.R
+    #     if(prevResultF == None):
+    #         prevResultF = self.R
+    #     resultT = []
+    #     resultF = []
+    #     for step in plan:
+    #         if(isinstance(step, Step)):
+    #             match(step.action):
+    #                 case 'select':
+    #                     if(step.branch == True):
+    #                         resultT, resultF = self.select(
+    #                             data=prevResultT, where=step.predicate)
+    #                     elif (step.branch == False):
+    #                         resultT, resultF = self.select(
+    #                             data=prevResultF, where=step.predicate)
+    #                     else:  # None
+    #                         resultT, resultF = self.select(
+    #                             data=self.R, where=step.predicate)
+
+    #                     if(parent != None and len(parent) > 1 and (parent[-1] == None or parent[-2] == None)):
+    #                         print(step.predicate.alias)
+    #                         print("True:", len(resultT))
+    #                         print("False:", len(resultF))
+    #                         self.result += resultT
+    #         elif isinstance(step, list):
+    #             self.executePlan(step, resultT, resultF, plan)
+
+    def getResult(self):
+        return self.result
+
+    def showPlan(self, plan, level=0, parent=None):
         if(plan == None):
             return
         for step in plan:
-            if(isinstance(step, Step)):
+            if isinstance(step, Step):
                 print("   "*level, step.toString())
+                # if(len(parent) > 1 and (parent[-1] == None or parent[-2] == None)):
             else:
-                self.showPlan(step, level+1)
+                self.showPlan(step, level+1, plan)
 
 
 if __name__ == "__main__":
-    DNFqueryStr = "(c > 0 AND l != 0) OR r>0"
-    CNFqueryStr = "(a > 0) AND (a > 0 OR b=0) AND c != 3 AND (d = 4 OR e <= 3)"
+    DNFqueryStr = "(Elevation > 2450 AND Aspect >= 172) OR Slope=28"
 
     db = DBMS()
-    dnf_plan,plans = db.genPlan(
+    dnf_plan, plans = db.genPlan(
         algorithm="TDSim", query=DNFqueryStr, queryType="dnf")
     db.showPlan(dnf_plan)
-    for p in plans:
-        print("+"*20)
-        db.showPlan(p)
+    # db.executePlan()
+    # print(db.getResult())
+    # for p in plans:
+    #     print("+"*20)
+    #     db.showPlan(p)
 # print([1,2,3,4][1:2])
