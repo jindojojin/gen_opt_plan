@@ -113,9 +113,9 @@ class DBMS:
         if len(e) == 1 and e[0].action == 'scan(R)':
             return e + [Step('select', p)]  # σp(χ∗P (e))
         elif branch == True:
-            e =  [Step('select', p, branch=True)]  # σp(Xp|e(σ+pj(e)))
+            return  [Step('select', p, branch=True)]  # σp(Xp|e(σ+pj(e)))
         elif branch == False:
-            e =  [Step('select', p, branch=False)]  # σp(Xp|e(σ-pj(e)))
+            return  [Step('select', p, branch=False)]  # σp(Xp|e(σ-pj(e)))
         return e
 
     def TDSim(self, e: list[Step], Bxp: BooleanExp, Asg: list[Assignment], branch: bool):
@@ -126,9 +126,9 @@ class DBMS:
         for p in Bxp.getPredicates():
             e0 = self.BuildPlan(p, e, branch)
             A = Assignment(p, True)
-            eT = self.TDSim(e0, Bxp.applyAsg(A), Asg + [A], True)
+            eT = self.TDSim(e0, Bxp.applyAsg(A), Asg + [A], True)[0]
             A = Assignment(p, False)
-            eF = self.TDSim(e0, Bxp.applyAsg(A), Asg + [A], False)
+            eF = self.TDSim(e0, Bxp.applyAsg(A), Asg + [A], False)[0]
             cost = self.Cost(eT) + self.Cost(eF) + self.Cost(e0)
             bestPlans.append([e0, eT, eF])
             if (bestplan == None or bestcost > cost):
@@ -147,6 +147,7 @@ class DBMS:
 
     def genPlan(self, algorithm: str, query: str, queryType="dnf"):
         Bxp = getBxpFromQueryStr(query, queryType)
+        print(list(map(lambda p: p.alias,Bxp.getPredicates())))
         match algorithm:
             case "TDSim":
                 return self.TDSim(e=[Step('scan(R)')], Bxp=Bxp, Asg=[], branch=None)
@@ -166,9 +167,9 @@ if __name__ == "__main__":
     CNFqueryStr = "(a > 0) AND (a > 0 OR b=0) AND c != 3 AND (d = 4 OR e <= 3)"
 
     db = DBMS()
-    dnf_plan, plans = db.genPlan(
+    dnf_plan,plans = db.genPlan(
         algorithm="TDSim", query=DNFqueryStr, queryType="dnf")
-    # db.showPlan(dnf_plan)
+    db.showPlan(dnf_plan)
     for p in plans:
         print("+"*20)
         db.showPlan(p)

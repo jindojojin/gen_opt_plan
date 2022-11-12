@@ -41,7 +41,7 @@ class BooleanExp:
     def toString(self):
         strR = []
         outStr = " OR " if self.expType == "dnf" else " AND "
-        inStr = " AND " if self.expType == "cnf" else " OR "
+        inStr = " AND " if self.expType == "dnf" else " OR "
         for g in self.groups:
             strR += [f"({inStr.join(map(lambda x: x.alias, g))})"]
         return outStr.join(strR)
@@ -55,6 +55,8 @@ class BooleanExp:
                         if (Asg.value == True):
                             predicates = list(filter(
                                 lambda x: x.alias != Asg.predicate.alias, g))
+                            if(len(predicates) == 0): # group da bang true, khong can xet cac group khac nua
+                                break
                         else:
                             predicates = []
                         groups.append(predicates)
@@ -105,12 +107,12 @@ def getBxpFromQueryStr(queryStr: str, queryType="dnf") -> BooleanExp:
 
 
 if __name__ == "__main__":
-    DNFqueryStr = "(a > 0) OR (a > 0 AND b=0) OR c != 3 OR (d = 4 AND e <= 3 AND a>0)"
+    DNFqueryStr = "(c > 0 AND l > 0) OR (r > 0)"
     CNFqueryStr = "(a > 0) AND (a > 0 OR b=0) AND c != 3 AND (d = 4 OR e <= 3)"
 
     b1 = getBxpFromQueryStr(DNFqueryStr, 'dnf')
-    b2 = getBxpFromQueryStr(CNFqueryStr, 'cnf')
+    b2 = b1.applyAsg(Assignment(Predicate('c', '>', '0'), True))
 
-    print(b1.applyAsg(Assignment(Predicate('a', '>', '0'), True)).toString())
-    print(b1.applyAsg(Assignment(Predicate('a', '>', '0'), False)).toString())
+    print(b2.toString())
+    print(b2.applyAsg(Assignment(Predicate('l', '>', '0'), True)).toString())
     # print(b2.applyAsg(Assignment(Predicate('a', '>', '0'), True)).toString())
