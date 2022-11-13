@@ -34,7 +34,8 @@ class DBMS:
 
     def scan(self):
         result = []
-        for line in self.dataFile:
+        self.Ridx = []
+        for i, line in enumerate(self.dataFile):
             data = line[:-1].split(",")
             row = []
             idx = 0
@@ -42,30 +43,31 @@ class DBMS:
                 row.append(data[int(idx): int(idx + col[1])])
                 idx += col[1]
             result.append(row)
+            self.Ridx.append(i)
         return result
 
-    def select(self, data, columns=["Elevation", "Aspect", "Slope"], where: Predicate = None, bypass=True):
-        p: Predicate = where
-        result = []
-        F_result = []  # false result for bypass
-        rawColumns = [column[0] for column in self.collumns]
-        columns = columns if len(columns) > 0 else rawColumns
-        for r in data:
-            row = []
-            is_ok = True
-            for col in columns:
-                col_idx = rawColumns.index(col)
-                col_data = r[col_idx]
-                # where handle
-                if(col == p.key and not self.check(col_data[0], p.op, p.value)):
-                    is_ok = False
-                    break
-                row.append(r[col_idx])
-            if (is_ok):
-                result.append(row)
-            elif (bypass):
-                F_result.append(row)
-        return (result, F_result)
+    def getData(self, rowId: int, columnName: str):
+        if (self.R == None):
+            raise Exception("Not scaned")
+
+        colIdx = -1
+        for idx, col in enumerate(self.collumns):
+            if (col[0] == columnName):
+                colIdx = idx
+        if (colIdx == -1):
+            raise Exception("invalid column")
+        return self.R[rowId][colIdx]
+
+    def select(self, rowIds: list[int], predicate: Predicate = None):
+        resultT = []
+        resultF = []
+        for rowId in rowIds:
+            colData = self.getData(rowId, predicate.key)
+            if self.check(colData[0], predicate.op, predicate.value):
+                resultT.append(rowId)
+            else:
+                resultF.append(rowId)
+        return resultT, resultF
 
     def check(self, v1, operator, v2):
         match operator:
@@ -83,11 +85,11 @@ class DBMS:
                 return int(v1) > int(v2)
 
     def Cost(self, e: list[Step]):
-        if(e == None):
+        if (e == None):
             return 0
         cost = 0
         for step in e:
-            if(isinstance(step, Step)):
+            if (isinstance(step, Step)):
                 match step.action:
                     case 'scan(R)':
                         cost += self.RelationSize * self._as + self._bs
@@ -103,8 +105,8 @@ class DBMS:
         def getXpe(plan):
             predicates_in_e = []
             for step in plan:
-                if(isinstance(step, Step)):
-                    if(step.predicate and step.predicate.key not in predicates_in_e):
+                if (isinstance(step, Step)):
+                    if (step.predicate and step.predicate.key not in predicates_in_e):
                         predicates_in_e.append(step.predicate.key)
                 elif isinstance(step, list):
                     predicates_in_e += getXpe(step)[0]
@@ -152,48 +154,58 @@ class DBMS:
         print(list(map(lambda p: p.alias, Bxp.getPredicates())))
         match algorithm:
             case "TDSim":
-                self.bestPlan = self.TDSim(
+                self.bestPlan, plans = self.TDSim(
                     e=[Step('scan(R)')], Bxp=Bxp, Asg=[], branch=None)
-        return self.bestPlan
+                return self.bestPlan, plans
 
     result = []  # For executePlan()
 
-    # def executePlan(self, plan=None, prevResultT=None, prevResultF=None, parent=None):
-    #     if(plan == None):
-    #         plan = self.bestPlan
-    #     if(prevResultT == None):
-    #         prevResultT = self.R
-    #     if(prevResultF == None):
-    #         prevResultF = self.R
-    #     resultT = []
-    #     resultF = []
-    #     for step in plan:
-    #         if(isinstance(step, Step)):
-    #             match(step.action):
-    #                 case 'select':
-    #                     if(step.branch == True):
-    #                         resultT, resultF = self.select(
-    #                             data=prevResultT, where=step.predicate)
-    #                     elif (step.branch == False):
-    #                         resultT, resultF = self.select(
-    #                             data=prevResultF, where=step.predicate)
-    #                     else:  # None
-    #                         resultT, resultF = self.select(
-    #                             data=self.R, where=step.predicate)
+    def executePlan(self, plan=None, prevResultT=None, prevResultF=None, parent=None):
+        # if(plan == None):
+        #     plan = self.bestPlan
+        # if(prevResultT == None):
+        #     prevResultT = self.R
+        # if(prevResultF == None):
+        #     prevResultF = self.R
+        resultT = prevResultT
+        resultF = prevResultF
+        for step in plan:
+            if (isinstance(step, Step)):
+                print("prev", len(prevResultT), len(prevResultF))
+                print("step = ", step.toString())
+                match(step.action):
+                    case 'select':
+                        if (step.branch == True):
+                            resultT, resultF = self.select(
+                                prevResultT, step.predicate)
+                            print("branch true", step.predicate.alias,
+                                  resultT, resultF)
+                        elif (step.branch == False):
+                            resultT, resultF = self.select(
+                                prevResultF, step.predicate)
+                            print("branch false", step.predicate.alias,
+                                  resultT, resultF)
+                        else:  # None
+                            resultT, resultF = self.select(
+                                self.Ridx, step.predicate)
+                            print("branch none", step.predicate.alias,
+                                  resultT, resultF)
 
-    #                     if(parent != None and len(parent) > 1 and (parent[-1] == None or parent[-2] == None)):
-    #                         print(step.predicate.alias)
-    #                         print("True:", len(resultT))
-    #                         print("False:", len(resultF))
-    #                         self.result += resultT
-    #         elif isinstance(step, list):
-    #             self.executePlan(step, resultT, resultF, plan)
+                        if (parent != None and len(parent) > 1 and (parent[-1] == None or parent[-2] == None)):
+                            print(step.predicate.alias)
+                            print("True:", resultT)
+                            print("False:", resultF)
+                            self.result += resultT
+            elif isinstance(step, list):
+                resultT, resultF = self.executePlan(
+                    step, resultT, resultF, plan)
+        return resultT, resultF
 
     def getResult(self):
         return self.result
 
     def showPlan(self, plan, level=0, parent=None):
-        if(plan == None):
+        if (plan == None):
             return
         for step in plan:
             if isinstance(step, Step):
@@ -210,8 +222,9 @@ if __name__ == "__main__":
     dnf_plan, plans = db.genPlan(
         algorithm="TDSim", query=DNFqueryStr, queryType="dnf")
     db.showPlan(dnf_plan)
-    # db.executePlan()
-    # print(db.getResult())
+    print(dnf_plan)
+    db.executePlan(db.bestPlan, db.Ridx, db.Ridx)
+    print(db.getResult())
     # for p in plans:
     #     print("+"*20)
     #     db.showPlan(p)

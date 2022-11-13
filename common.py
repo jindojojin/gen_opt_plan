@@ -32,11 +32,12 @@ class BooleanExp:
         self.expType = expType
 
     def getPredicates(self):
-        result = set()
+        result =  []
         for g in self.groups:
             for p in g:
-                result.add(p)
-        return list(result)
+                if(not p in result):
+                    result.append(p)
+        return result
 
     def toString(self):
         strR = []
@@ -104,6 +105,15 @@ def getBxpFromQueryStr(queryStr: str, queryType="dnf") -> BooleanExp:
             for g in groupsRaw:
                 groups.append(getPredicates(g))
     return BooleanExp(groups, queryType)
+
+class OperationResult():
+  def __init__(self, trueRowIds: list[int] = [], falseRowIds: list[int] = [], selectedColumns: list[int] = []):
+    self.trueRowIds = trueRowIds
+    self.falseRowIds = falseRowIds
+    self.selectedColumns = selectedColumns
+
+  def getRowIds(self, branch: bool):
+    return self.trueRowIds if branch else self.falseRowIds
 
 
 if __name__ == "__main__":
