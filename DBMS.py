@@ -1,4 +1,5 @@
 import math
+from tabulate import tabulate
 from common import Predicate, Assignment, BooleanExp, Step, getAsgMemoKey, getBxpFromQueryStr, getPredicates
 
 
@@ -15,23 +16,7 @@ class DBMS:
 
     def __init__(self):
         self.dataFile = open("covtype.data", "r")
-        # self.columns = [  # Forest Data only
-        #     ["Elevation", 1],
-        #     ["Aspect", 1],
-        #     ["Slope", 1],
-        #     ["Horizontal_Distance_To_Hydrology", 1],
-        #     ["Vertical_Distance_To_Hydrology", 1],
-        #     ["Horizontal_Distance_To_Roadways", 1],
-        #     ["Hillshade_9am", 1],
-        #     ["Hillshade_Noon", 1],
-        #     ["Hillshade_3pm", 1],
-        #     ["Horizontal_Distance_To_Fire_Points", 1],
-        #     ["Wilderness_Area", 4],
-        #     ["Soil_Type", 40],
-        #     ["Cover_Type", 1]
-        # ]
         self.columns = list(map(lambda i: f"c{i}", range(54)))
-        print(self.columns)
 
     def scan(self):
         self.R = []
@@ -109,17 +94,21 @@ class DBMS:
                     if (step.predicate and step.predicate.key not in predicates_in_e):
                         predicates_in_e.append(step.predicate.key)
                 elif isinstance(step, list):
-                    predicates_in_e += getXpe(step)[0]
+                    p_in_e, p_in_p = getXpe(step)
+                    predicates_in_e += p_in_e
             return (predicates_in_e, []) if p.key in predicates_in_e else (predicates_in_e, [p.key])
         # Xp|e = Xp \ Xe // outstanding maps ;  Xe = ∪pj∈eXp
-        Xp, Xpe = getXpe(e)
+        Xe, Xpe = getXpe(e)
 
         if e == None:  # init plan :  e =  Scan(R)
-            return [Step('select', p, branch=True)]  # σp(χ∗P (e))
+            # σp(χ∗P (e))
+            return [Step('map', columns=[p.key]), Step('select', p, branch=True)]
         elif branch == True:
-            return [Step('select', p, branch=True)]  # σp(Xp|e(σ+pj(e)))
+            # σp(Xp|e(σ+pj(e)))
+            return [Step('map', columns=Xpe), Step('select', p, branch=True)]
         elif branch == False:
-            return [Step('select', p, branch=False)]  # σp(Xp|e(σ-pj(e)))
+            # σp(Xp|e(σ-pj(e)))
+            return [Step('map', columns=Xpe), Step('select', p, branch=False)]
         return e
 
     def TDSim(self, e: list[Step], Bxp: BooleanExp, Asg: list[Assignment], branch: bool):
@@ -162,7 +151,6 @@ class DBMS:
 
     def genPlan(self, algorithm: str, query: str, queryType="dnf"):
         Bxp = getBxpFromQueryStr(query, queryType)
-        print(list(map(lambda p: p.alias, Bxp.getPredicates())))
         match algorithm:
             case "TDSim":
                 self.bestPlan = self.TDSim(
@@ -177,6 +165,7 @@ class DBMS:
     def doSteps(self, steps: list[Step], prevResultT, prevResultF, level):
         resultT = []
         resultF = []
+        columns = []
         indent = "      "*level
         for step in steps:
             print("")
@@ -186,6 +175,9 @@ class DBMS:
             match(step.action):
                 case 'scan(R)':
                     resultT, resultF = self.scan()
+                case 'map':
+                    columns += step.columns
+                    resultT, resultF = prevResultT, prevResultF
                 case 'select':
                     print(indent,
                           f'Select {step.predicate.alias} from {step.branch}: {prevResultT if step.branch else prevResultF}')
@@ -195,33 +187,45 @@ class DBMS:
                     else:
                         resultT, resultF = self.select(
                             prevResultF, step.predicate)
-            print(indent, f"Output: True:{resultT}   False:{resultF}")
-        return resultT, resultF
+            print(indent, f"Output: True: {resultT}   False: {resultF}")
+        return resultT, resultF, columns
 
     def executePlan(self, plan: list, prevResultT=None, prevResultF=None, level=0):
-        resultT, resultF = self.doSteps(
+        result = []
+        columns = []
+        resultT, resultF, cols = self.doSteps(
             plan[0], prevResultT, prevResultF, level)
-        branch_count=0
-        for i in range(1,3):
+        columns += cols
+        branch_count = 0
+        for i in range(1, 3):
             if isinstance(plan[i], list):
-                branch_count+=1
-                self.executePlan(plan[i], resultT, resultF, level+1)
-        if(branch_count == 1):
-            self.result += resultT if plan[1] == None else resultF
-        if(branch_count == 0):
-            self.result += resultT        
-        
+                branch_count += 1
+                rowIds, colIds = self.executePlan(
+                    plan[i], resultT, resultF, level+1)
+                result += rowIds
+                columns += colIds
+        if (branch_count == 1):
+            result += resultT if plan[1] == None else resultF
+        if (branch_count == 0):
+            result += resultT
+        return result, list(set(columns))
 
-
-    def getResult(self):
-        return self.result
+    def showResult(self, rowIds: list[int], colKeys: list[str]):
+        result = []
+        for rid in rowIds:
+            data = []
+            for key in colKeys:
+                data.append(self.getData(rid, key))
+            result.append(data)
+        print(tabulate(result, headers=colKeys, tablefmt="grid"))
+        # return result
 
     def showPlan(self, plan, level=0):
         if (plan == None):
             return
         for step in plan:
             if isinstance(step, Step):
-                print("   "*level, step.toString())
+                print("   |"*level, step.toString())
             else:
                 self.showPlan(step, level+1)
 
@@ -234,8 +238,9 @@ if __name__ == "__main__":
         algorithm="TDSimMemo", query=DNFqueryStr, queryType="dnf")
     # db.showPlan(dnf_plan)
     # print(dnf_plan)
-    db.executePlan(db.bestPlan)
-    print(db.getResult())
+    result, cols = db.executePlan(db.bestPlan)
+    # print(result, cols)
+    db.showResult(result, cols)
     # for p in plans:
     #     print("+"*20)
     #     db.showPlan(p)

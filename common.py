@@ -17,7 +17,7 @@ class Step:
         self.branch = branch
 
     def toString(self):
-        return f"{self.action} ({self.predicate.alias if self.predicate != None else ''}, {self.branch if self.branch != None else ''})"
+        return f"{self.branch if self.branch != None else ''} --> {self.action} ({self.predicate.alias if self.predicate != None else self.columns})"
 
 
 class Assignment:
@@ -30,6 +30,9 @@ class BooleanExp:
     def __init__(self, groups: list[list[Predicate]], expType: str) -> None:
         self.groups = groups
         self.expType = expType
+
+    def addGroup(self,g: list[Predicate]):
+        self.groups.append(g)
 
     def getPredicates(self):
         result = []
