@@ -278,15 +278,8 @@ if __name__ == "__main__":
         algorithm="TDSimMemo", query=DNFqueryStr, queryType="dnf")
     db.showPlan(tdsim_plan)
     
-    print("TDACB Plan:")
-    acb_plan = db.genPlan(
-        algorithm="TDACB", query=DNFqueryStr, queryType="dnf")
-    db.showPlan(acb_plan)
-    # print(dnf_plan)
-    # result, cols = db.executePlan(tdsim_plan)
-    # print(result, cols)
-    # db.showResult(result, cols)
-    # for p in plans:
-    #     print("+"*20)
-    #     db.showPlan(p)
-# print([1,2,3,4][1:2])
+    # print("TDACB Plan:")
+    # acb_plan = db.genPlan(
+    #     algorithm="TDACB", query=DNFqueryStr, queryType="dnf")
+    # db.showPlan(acb_plan)
+
