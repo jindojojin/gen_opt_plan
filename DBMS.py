@@ -29,12 +29,12 @@ class DBMS:
             ["Soil_Type", 40],
             ["Cover_Type", 1]
         ]
-        self.R = self.scan()
+        # self.R = self.scan()
         # print(self.R)
 
     def scan(self):
-        result = []
-        self.Ridx = []
+        self.R = []
+        Ridx = []
         for i, line in enumerate(self.dataFile):
             data = line[:-1].split(",")
             row = []
@@ -42,9 +42,9 @@ class DBMS:
             for col in self.collumns:
                 row.append(data[int(idx): int(idx + col[1])])
                 idx += col[1]
-            result.append(row)
-            self.Ridx.append(i)
-        return result
+            self.R.append(row)
+            Ridx.append(i)
+        return Ridx, []
 
     def getData(self, rowId: int, columnName: str):
         if (self.R == None):
@@ -59,6 +59,8 @@ class DBMS:
         return self.R[rowId][colIdx]
 
     def select(self, rowIds: list[int], predicate: Predicate = None):
+        if (rowIds == None):
+            return [], []
         resultT = []
         resultF = []
         for rowId in rowIds:
@@ -103,6 +105,8 @@ class DBMS:
 
     def BuildPlan(self, p: Predicate, e: list[Step], branch: bool):
         def getXpe(plan):
+            if (plan == None):
+                return ([], [])
             predicates_in_e = []
             for step in plan:
                 if (isinstance(step, Step)):
@@ -114,8 +118,8 @@ class DBMS:
         # Xp|e = Xp \ Xe // outstanding maps ;  Xe = ∪pj∈eXp
         Xp, Xpe = getXpe(e)
 
-        if len(e) == 1 and e[0].action == 'scan(R)':
-            return e + [Step('select', p)]  # σp(χ∗P (e))
+        if e == None:  # init plan :  e =  Scan(R)
+            return [Step('select', p, branch=True)]  # σp(χ∗P (e))
         elif branch == True:
             return [Step('select', p, branch=True)]  # σp(Xp|e(σ+pj(e)))
         elif branch == False:
@@ -136,7 +140,8 @@ class DBMS:
             cost = self.Cost(eT) + self.Cost(eF) + self.Cost(e0)
             bestPlans.append([e0, eT, eF])
             if (bestplan == None or bestcost > cost):
-                bestplan = [e0, eT, eF]
+                bestplan = [e0, eT, eF] if e else [
+                    [Step('scan(R)')], [e0, eT, eF], None]
                 bestcost = cost
         return bestplan, bestPlans
 
@@ -155,64 +160,61 @@ class DBMS:
         match algorithm:
             case "TDSim":
                 self.bestPlan, plans = self.TDSim(
-                    e=[Step('scan(R)')], Bxp=Bxp, Asg=[], branch=None)
+                    e=None, Bxp=Bxp, Asg=[], branch=None)
                 return self.bestPlan, plans
 
     result = []  # For executePlan()
 
-    def executePlan(self, plan=None, prevResultT=None, prevResultF=None, parent=None):
-        # if(plan == None):
-        #     plan = self.bestPlan
-        # if(prevResultT == None):
-        #     prevResultT = self.R
-        # if(prevResultF == None):
-        #     prevResultF = self.R
-        resultT = prevResultT
-        resultF = prevResultF
-        for step in plan:
-            if (isinstance(step, Step)):
-                print("prev", len(prevResultT), len(prevResultF))
-                print("step = ", step.toString())
-                match(step.action):
-                    case 'select':
-                        if (step.branch == True):
-                            resultT, resultF = self.select(
-                                prevResultT, step.predicate)
-                            print("branch true", step.predicate.alias,
-                                  resultT, resultF)
-                        elif (step.branch == False):
-                            resultT, resultF = self.select(
-                                prevResultF, step.predicate)
-                            print("branch false", step.predicate.alias,
-                                  resultT, resultF)
-                        else:  # None
-                            resultT, resultF = self.select(
-                                self.Ridx, step.predicate)
-                            print("branch none", step.predicate.alias,
-                                  resultT, resultF)
-
-                        if (parent != None and len(parent) > 1 and (parent[-1] == None or parent[-2] == None)):
-                            print(step.predicate.alias)
-                            print("True:", resultT)
-                            print("False:", resultF)
-                            self.result += resultT
-            elif isinstance(step, list):
-                resultT, resultF = self.executePlan(
-                    step, resultT, resultF, plan)
+    def doSteps(self, steps: list[Step], prevResultT, prevResultF, level):
+        resultT = []
+        resultF = []
+        indent = "      "*level
+        for step in steps:
+            print("")
+            print(indent, "step = ", step.toString())
+            print(indent, "Input: ", "True:", prevResultT,
+                  " False:", prevResultF)
+            match(step.action):
+                case 'scan(R)':
+                    resultT, resultF = self.scan()
+                case 'select':
+                    print(indent,
+                          f'Select {step.predicate.alias} from {step.branch}: {prevResultT if step.branch else prevResultF}')
+                    if (step.branch == True):
+                        resultT, resultF = self.select(
+                            prevResultT, step.predicate)
+                    else:
+                        resultT, resultF = self.select(
+                            prevResultF, step.predicate)
+            print(indent, f"Output: True:{resultT}   False:{resultF}")
         return resultT, resultF
+
+    def executePlan(self, plan: list, prevResultT=None, prevResultF=None, level=0):
+        resultT, resultF = self.doSteps(
+            plan[0], prevResultT, prevResultF, level)
+        branch_count=0
+        for i in range(1,3):
+            if isinstance(plan[i], list):
+                branch_count+=1
+                self.executePlan(plan[i], resultT, resultF, level+1)
+        if(branch_count == 1):
+            self.result += resultT if plan[1] == None else resultF
+        if(branch_count == 0):
+            self.result += resultT        
+        
+
 
     def getResult(self):
         return self.result
 
-    def showPlan(self, plan, level=0, parent=None):
+    def showPlan(self, plan, level=0):
         if (plan == None):
             return
         for step in plan:
             if isinstance(step, Step):
                 print("   "*level, step.toString())
-                # if(len(parent) > 1 and (parent[-1] == None or parent[-2] == None)):
             else:
-                self.showPlan(step, level+1, plan)
+                self.showPlan(step, level+1)
 
 
 if __name__ == "__main__":
@@ -223,7 +225,7 @@ if __name__ == "__main__":
         algorithm="TDSim", query=DNFqueryStr, queryType="dnf")
     db.showPlan(dnf_plan)
     print(dnf_plan)
-    db.executePlan(db.bestPlan, db.Ridx, db.Ridx)
+    db.executePlan(db.bestPlan)
     print(db.getResult())
     # for p in plans:
     #     print("+"*20)

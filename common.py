@@ -10,7 +10,7 @@ class Predicate:
 
 
 class Step:
-    def __init__(self, action: str, predicate: Predicate = None, columns: list[str] = [], branch=None):
+    def __init__(self, action: str, predicate: Predicate = None, columns: list[str] = [], branch=True):
         self.action = action
         self.predicate = predicate
         self.columns = columns
@@ -32,10 +32,10 @@ class BooleanExp:
         self.expType = expType
 
     def getPredicates(self):
-        result =  []
+        result = []
         for g in self.groups:
             for p in g:
-                if(not p in result):
+                if (not p in result):
                     result.append(p)
         return result
 
@@ -56,7 +56,8 @@ class BooleanExp:
                         if (Asg.value == True):
                             predicates = list(filter(
                                 lambda x: x.alias != Asg.predicate.alias, g))
-                            if(len(predicates) == 0): # group da bang true, khong can xet cac group khac nua
+                            # group da bang true, khong can xet cac group khac nua
+                            if (len(predicates) == 0):
                                 break
                         else:
                             predicates = []
@@ -106,14 +107,15 @@ def getBxpFromQueryStr(queryStr: str, queryType="dnf") -> BooleanExp:
                 groups.append(getPredicates(g))
     return BooleanExp(groups, queryType)
 
-class OperationResult():
-  def __init__(self, trueRowIds: list[int] = [], falseRowIds: list[int] = [], selectedColumns: list[int] = []):
-    self.trueRowIds = trueRowIds
-    self.falseRowIds = falseRowIds
-    self.selectedColumns = selectedColumns
 
-  def getRowIds(self, branch: bool):
-    return self.trueRowIds if branch else self.falseRowIds
+class OperationResult():
+    def __init__(self, trueRowIds: list[int] = [], falseRowIds: list[int] = [], selectedColumns: list[int] = []):
+        self.trueRowIds = trueRowIds
+        self.falseRowIds = falseRowIds
+        self.selectedColumns = selectedColumns
+
+    def getRowIds(self, branch: bool):
+        return self.trueRowIds if branch else self.falseRowIds
 
 
 if __name__ == "__main__":
