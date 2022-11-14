@@ -30,7 +30,6 @@ def genBxp(predicate_count: int, summand_size=2, type="dnf"):
 
 
 def get_Test_Summary(datas):
-    print("test Data", datas)
     for alData in datas:
         minV = math.inf
         maxV = 0
@@ -45,14 +44,14 @@ def get_Test_Summary(datas):
 if __name__ == "__main__":
     db = DBMS()
     testResult = []
-    for predicate_count in [4, 6, 8]:
+    for predicate_count in [4, 6, 8,10,12,14,16]:
         data = {
             'preds': predicate_count,
             'cnf': [],
             'dnf': []
         }
         for summand_size in range(2,3):
-            for bxp_type in ["dnf"]:
+            for bxp_type in ["dnf","cnf"]:
                 testDatas = []
                 for test in range(5):
                     bxp = genBxp(predicate_count, summand_size, bxp_type)
@@ -64,7 +63,7 @@ if __name__ == "__main__":
                         best_plan = db.genPlan(
                             algorithm=al, query=query, queryType=bxp_type)
                         genP = time.time()
-                        db.showPlan(best_plan)
+                        # db.showPlan(best_plan)
                         rowIds, colIds = db.executePlan(best_plan)
                         # db.showResult(rowIds,colIds)
                         executeP = time.time()
@@ -74,14 +73,14 @@ if __name__ == "__main__":
                                     'testDatas': get_Test_Summary(testDatas)}]
         testResult.append(data)
     table_data = []
-    print(testResult)
     for s in testResult:
         row = [s['preds']]
         for bxptype in ['dnf','cnf']:
             for al in s[bxptype]:
                 row+= al['testDatas']
         table_data.append(row)
-    print(tabulate.tabulate(table_data, tablefmt="grid"))
+
+    print(tabulate.tabulate(table_data, headers=["pred."]+["min","avg","max"]*2 ,tablefmt="grid"))
 
     # print("Plan: ")
     # db.showPlan(plan)
