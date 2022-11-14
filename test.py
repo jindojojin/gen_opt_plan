@@ -1,6 +1,8 @@
 import math
 import random
 import time
+
+import tabulate
 from DBMS import DBMS
 from common import BooleanExp, Predicate
 columns = list(map(lambda i: f"c{i}", range(55)))
@@ -27,29 +29,65 @@ def genBxp(predicate_count: int, summand_size=2, type="dnf"):
     return DNF
 
 
+def get_Test_Summary(datas):
+    print("test Data", datas)
+    for alData in datas:
+        minV = math.inf
+        maxV = 0
+        sum = 0
+        for d in alData:
+            sum += d
+            minV = min(minV, d)
+            maxV = max(maxV, d)
+    return [round(minV,4), round(sum/len(datas),4),round( maxV,4)]
+
+
 if __name__ == "__main__":
     db = DBMS()
-    for test in range(5): 
-        bxp = genBxp(8, 3, "dnf")
-        query = bxp.toString()
-        print("TDSimMemo Plan:")
-        startTime = time.time()
-        tdsim_plan = db.genPlan(
-            algorithm="TDSimMemo", query=query, queryType="dnf")
-        db.showPlan(tdsim_plan)
+    testResult = []
+    for predicate_count in [4, 6, 8]:
+        data = {
+            'preds': predicate_count,
+            'cnf': [],
+            'dnf': []
+        }
+        for summand_size in range(2,3):
+            for bxp_type in ["dnf"]:
+                testDatas = []
+                for test in range(5):
+                    bxp = genBxp(predicate_count, summand_size, bxp_type)
+                    query = bxp.toString()
+                    testdata = []
+                    for al in ["TDSimMemo"]:
+                        # print(f"{al} Plan:")
+                        startP = time.time()
+                        best_plan = db.genPlan(
+                            algorithm=al, query=query, queryType=bxp_type)
+                        genP = time.time()
+                        db.showPlan(best_plan)
+                        rowIds, colIds = db.executePlan(best_plan)
+                        # db.showResult(rowIds,colIds)
+                        executeP = time.time()
+                        testdata += [executeP-startP]
+                    testDatas.append(testdata)
+                data[bxp_type] += [{'summand_size': summand_size,
+                                    'testDatas': get_Test_Summary(testDatas)}]
+        testResult.append(data)
+    table_data = []
+    print(testResult)
+    for s in testResult:
+        row = [s['preds']]
+        for bxptype in ['dnf','cnf']:
+            for al in s[bxptype]:
+                row+= al['testDatas']
+        table_data.append(row)
+    print(tabulate.tabulate(table_data, tablefmt="grid"))
 
-        print("TDACB Plan:")
-        acb_plan = db.genPlan(
-            algorithm="TDACB", query=query, queryType="dnf")
-        db.showPlan(acb_plan)
-        print(bxp.toString())
-        plan = db.genPlan('TDACB', bxp.toString(), bxp.expType)
-        
-        # print("Plan: ")
-        # db.showPlan(plan)
-        # result,cols = db.executePlan(plan)
-        # print("Result :")
-        # db.showResult(result,cols)
+    # print("Plan: ")
+    # db.showPlan(plan)
+    # result,cols = db.executePlan(plan)
+    # print("Result :")
+    # db.showResult(result,cols)
 
 
 # dataFile = open("covtype.data", "r")
