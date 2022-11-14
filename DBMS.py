@@ -6,6 +6,7 @@ from common import Predicate, Assignment, BooleanExp, Step, getAsgMemoKey, getBx
 class DBMS:
     Memo = {}
     LBMemo = {}
+    ACBMemo = {}
     RelationSize = 53
     _as = 3  # | => constants for scan operator
     _bs = 2  # |
@@ -97,7 +98,7 @@ class DBMS:
                     predicates_in_e += p_in_e
             return (predicates_in_e, []) if p.key in predicates_in_e else (predicates_in_e, [p.key])
         # Xp|e = Xp \ Xe // outstanding maps ;  Xe = ∪pj∈eXp
-        Xpe = getXpe(e)
+        Xe,Xpe = getXpe(e)
 
         if e == None:  # init plan :  e =  Scan(R)
             # σp(χ∗P (e))
@@ -151,8 +152,8 @@ class DBMS:
     def TDACB(self, e: list[Step], Bxp: BooleanExp, Asg: list[Assignment], branch: bool, b: int):
         memoKey = getAsgMemoKey(Asg)
         LB = self.LBMemo[memoKey] if memoKey in self.LBMemo else 0
-        if memoKey in self.Memo:
-            plan = self.Memo[memoKey]
+        if memoKey in self.ACBMemo:
+            plan = self.ACBMemo[memoKey]
             if (self.Cost(plan) <= b):
                 return plan
         if LB >= b:
@@ -164,7 +165,6 @@ class DBMS:
         bestplan = None
         if b >= 0:
             for p in Bxp.getPredicates():
-                print(p.alias)
                 e0 = self.BuildPlan(p, e, branch)
                 b_ = min(b, bestcost) - self.Cost(e0)
                 A = Assignment(p, True)
@@ -182,8 +182,8 @@ class DBMS:
         if bestplan and len(bestplan) == 3 and (bestplan[1] == None or bestplan[2] == None):
             self.LBMemo[memoKey] = b
             return None
-        self.Memo[memoKey] = bestplan
-        return self.Memo[memoKey]
+        self.ACBMemo[memoKey] = bestplan
+        return self.ACBMemo[memoKey]
 
     def genPlan(self, algorithm: str, query: str, queryType="dnf"):
         Bxp = getBxpFromQueryStr(query, queryType)
@@ -207,10 +207,10 @@ class DBMS:
         columns = []
         indent = "      "*level
         for step in steps:
-            print("")
-            print(indent, "step = ", step.toString())
-            print(indent, "Input: ", "True:", prevResultT,
-                  " False:", prevResultF)
+            # print("")
+            # print(indent, "step = ", step.toString())
+            # print(indent, "Input: ", "True:", prevResultT,
+            #       " False:", prevResultF)
             match(step.action):
                 case 'scan(R)':
                     resultT, resultF = self.scan()
@@ -218,15 +218,15 @@ class DBMS:
                     columns += step.columns
                     resultT, resultF = prevResultT, prevResultF
                 case 'select':
-                    print(indent,
-                          f'Select {step.predicate.alias} from {step.branch}: {prevResultT if step.branch else prevResultF}')
+                    # print(indent,
+                    #       f'Select {step.predicate.alias} from {step.branch}: {prevResultT if step.branch else prevResultF}')
                     if (step.branch == True):
                         resultT, resultF = self.select(
                             prevResultT, step.predicate)
                     else:
                         resultT, resultF = self.select(
                             prevResultF, step.predicate)
-            print(indent, f"Output: True: {resultT}   False: {resultF}")
+            # print(indent, f"Output: True: {resultT}   False: {resultF}")
         return resultT, resultF, columns
 
     def executePlan(self, plan: list, prevResultT=None, prevResultF=None, level=0):
@@ -237,14 +237,14 @@ class DBMS:
         columns += cols
         branch_count = 0
         for i in range(1, 3):
-            if isinstance(plan[i], list):
+            if isinstance(plan[i], list) and len(plan[i]) > 0:
                 branch_count += 1
                 rowIds, colIds = self.executePlan(
                     plan[i], resultT, resultF, level+1)
                 result += rowIds
                 columns += colIds
         if (branch_count == 1):
-            result += resultT if plan[1] == None else resultF
+            result += resultT if (plan[1] == None or len(plan[1]) == 0) else resultF
         if (branch_count == 0):
             result += resultT
         return result, list(set(columns))
@@ -283,7 +283,7 @@ if __name__ == "__main__":
         algorithm="TDACB", query=DNFqueryStr, queryType="dnf")
     db.showPlan(acb_plan)
     # print(dnf_plan)
-    # result, cols = db.executePlan(db.bestPlan)
+    # result, cols = db.executePlan(tdsim_plan)
     # print(result, cols)
     # db.showResult(result, cols)
     # for p in plans:
