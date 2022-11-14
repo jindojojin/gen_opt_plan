@@ -1,3 +1,4 @@
+import math
 from common import Predicate, Assignment, BooleanExp, Step, getAsgMemoKey, getBxpFromQueryStr, getPredicates
 
 
@@ -127,30 +128,40 @@ class DBMS:
         return e
 
     def TDSim(self, e: list[Step], Bxp: BooleanExp, Asg: list[Assignment], branch: bool):
-        bestcost = 10e60
+        bestcost = math.inf
         bestplan = None
         # print("predicates ",list(map(lambda p: p.alias,Bxp.getPredicates())))
-        bestPlans = []
         for p in Bxp.getPredicates():
             e0 = self.BuildPlan(p, e, branch)
             A = Assignment(p, True)
-            eT = self.TDSim(e0, Bxp.applyAsg(A), Asg + [A], True)[0]
+            eT = self.TDSim(e0, Bxp.applyAsg(A), Asg + [A], True)
             A = Assignment(p, False)
-            eF = self.TDSim(e0, Bxp.applyAsg(A), Asg + [A], False)[0]
+            eF = self.TDSim(e0, Bxp.applyAsg(A), Asg + [A], False)
             cost = self.Cost(eT) + self.Cost(eF) + self.Cost(e0)
-            bestPlans.append([e0, eT, eF])
             if (bestplan == None or bestcost > cost):
                 bestplan = [e0, eT, eF] if e else [
                     [Step('scan(R)')], [e0, eT, eF], None]
                 bestcost = cost
-        return bestplan, bestPlans
+        return bestplan
 
     def TDSimMemo(self, e: list[Step], Bxp: BooleanExp, Asg: list[Assignment], branch: bool):
         key = getAsgMemoKey(Asg)
         if key in self.Memo:
-            return self.Memo
+            return self.Memo[key]
         else:
-            bestplan = self.TDSim(e, Bxp, Asg, branch)
+            bestcost = math.inf
+            bestplan = None
+            for p in Bxp.getPredicates():
+                e0 = self.BuildPlan(p, e, branch)
+                A = Assignment(p, True)
+                eT = self.TDSimMemo(e0, Bxp.applyAsg(A), Asg + [A], True)
+                A = Assignment(p, False)
+                eF = self.TDSimMemo(e0, Bxp.applyAsg(A), Asg + [A], False)
+                cost = self.Cost(eT) + self.Cost(eF) + self.Cost(e0)
+                if (bestplan == None or bestcost > cost):
+                    bestplan = [e0, eT, eF] if e else [
+                        [Step('scan(R)')], [e0, eT, eF], None]
+                    bestcost = cost
             self.Memo[key] = bestplan
             return bestplan
 
@@ -159,9 +170,12 @@ class DBMS:
         print(list(map(lambda p: p.alias, Bxp.getPredicates())))
         match algorithm:
             case "TDSim":
-                self.bestPlan, plans = self.TDSim(
+                self.bestPlan = self.TDSim(
                     e=None, Bxp=Bxp, Asg=[], branch=None)
-                return self.bestPlan, plans
+            case "TDSimMemo":
+                self.bestPlan = self.TDSimMemo(
+                    e=None, Bxp=Bxp, Asg=[], branch=None)
+        return self.bestPlan
 
     result = []  # For executePlan()
 
@@ -218,13 +232,13 @@ class DBMS:
 
 
 if __name__ == "__main__":
-    DNFqueryStr = "(Elevation > 2450 AND Aspect >= 172) OR Slope=28"
+    DNFqueryStr = "(Elevation > 2450 AND Aspect >= 172) OR (Elevation > 2450 AND Aspect >= 172) OR Slope=28"
 
     db = DBMS()
-    dnf_plan, plans = db.genPlan(
-        algorithm="TDSim", query=DNFqueryStr, queryType="dnf")
-    db.showPlan(dnf_plan)
-    print(dnf_plan)
+    dnf_plan = db.genPlan(
+        algorithm="TDSimMemo", query=DNFqueryStr, queryType="dnf")
+    # db.showPlan(dnf_plan)
+    # print(dnf_plan)
     db.executePlan(db.bestPlan)
     print(db.getResult())
     # for p in plans:
