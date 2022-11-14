@@ -15,34 +15,29 @@ class DBMS:
 
     def __init__(self):
         self.dataFile = open("covtype.data", "r")
-        self.collumns = [  # Forest Data only
-            ["Elevation", 1],
-            ["Aspect", 1],
-            ["Slope", 1],
-            ["Horizontal_Distance_To_Hydrology", 1],
-            ["Vertical_Distance_To_Hydrology", 1],
-            ["Horizontal_Distance_To_Roadways", 1],
-            ["Hillshade_9am", 1],
-            ["Hillshade_Noon", 1],
-            ["Hillshade_3pm", 1],
-            ["Horizontal_Distance_To_Fire_Points", 1],
-            ["Wilderness_Area", 4],
-            ["Soil_Type", 40],
-            ["Cover_Type", 1]
-        ]
-        # self.R = self.scan()
-        # print(self.R)
+        # self.columns = [  # Forest Data only
+        #     ["Elevation", 1],
+        #     ["Aspect", 1],
+        #     ["Slope", 1],
+        #     ["Horizontal_Distance_To_Hydrology", 1],
+        #     ["Vertical_Distance_To_Hydrology", 1],
+        #     ["Horizontal_Distance_To_Roadways", 1],
+        #     ["Hillshade_9am", 1],
+        #     ["Hillshade_Noon", 1],
+        #     ["Hillshade_3pm", 1],
+        #     ["Horizontal_Distance_To_Fire_Points", 1],
+        #     ["Wilderness_Area", 4],
+        #     ["Soil_Type", 40],
+        #     ["Cover_Type", 1]
+        # ]
+        self.columns = list(map(lambda i: f"c{i}", range(54)))
+        print(self.columns)
 
     def scan(self):
         self.R = []
         Ridx = []
         for i, line in enumerate(self.dataFile):
-            data = line[:-1].split(",")
-            row = []
-            idx = 0
-            for col in self.collumns:
-                row.append(data[int(idx): int(idx + col[1])])
-                idx += col[1]
+            row = line[:-1].split(",")
             self.R.append(row)
             Ridx.append(i)
         return Ridx, []
@@ -52,8 +47,8 @@ class DBMS:
             raise Exception("Not scaned")
 
         colIdx = -1
-        for idx, col in enumerate(self.collumns):
-            if (col[0] == columnName):
+        for idx, col in enumerate(self.columns):
+            if (col == columnName):
                 colIdx = idx
         if (colIdx == -1):
             raise Exception("invalid column")
@@ -66,7 +61,7 @@ class DBMS:
         resultF = []
         for rowId in rowIds:
             colData = self.getData(rowId, predicate.key)
-            if self.check(colData[0], predicate.op, predicate.value):
+            if self.check(colData, predicate.op, predicate.value):
                 resultT.append(rowId)
             else:
                 resultF.append(rowId)
@@ -232,7 +227,7 @@ class DBMS:
 
 
 if __name__ == "__main__":
-    DNFqueryStr = "(Elevation > 2450 AND Aspect >= 172) OR (Elevation > 2450 AND Aspect >= 172) OR Slope=28"
+    DNFqueryStr = "(c0 > 2450 AND c1 >= 172) OR c2=28"
 
     db = DBMS()
     dnf_plan = db.genPlan(
