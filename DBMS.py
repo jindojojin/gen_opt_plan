@@ -5,8 +5,7 @@ from common import Predicate, Assignment, BooleanExp, Step, getAsgMemoKey, getBx
 
 class DBMS:
     Memo = {}
-    AsgMap = {}  # maping "hash of Asg" to Asg
-
+    LBMemo = {}
     RelationSize = 53
     _as = 3  # | => constants for scan operator
     _bs = 2  # |
@@ -76,7 +75,7 @@ class DBMS:
                 match step.action:
                     case 'scan(R)':
                         cost += self.RelationSize * self._as + self._bs
-                    case 'X*(A)':
+                    case 'map':
                         cost += len(step.columns) * self._ax + self._bx
                     case 'select':
                         cost += len(step.columns)
@@ -98,7 +97,7 @@ class DBMS:
                     predicates_in_e += p_in_e
             return (predicates_in_e, []) if p.key in predicates_in_e else (predicates_in_e, [p.key])
         # Xp|e = Xp \ Xe // outstanding maps ;  Xe = ∪pj∈eXp
-        Xe, Xpe = getXpe(e)
+        Xpe = getXpe(e)
 
         if e == None:  # init plan :  e =  Scan(R)
             # σp(χ∗P (e))
@@ -124,7 +123,7 @@ class DBMS:
             cost = self.Cost(eT) + self.Cost(eF) + self.Cost(e0)
             if (bestplan == None or bestcost > cost):
                 bestplan = [e0, eT, eF] if e else [
-                    [Step('scan(R)')], [e0, eT, eF], None]
+                    [Step('scan(R)')], [e0, eT, eF], []]
                 bestcost = cost
         return bestplan
 
@@ -144,10 +143,47 @@ class DBMS:
                 cost = self.Cost(eT) + self.Cost(eF) + self.Cost(e0)
                 if (bestplan == None or bestcost > cost):
                     bestplan = [e0, eT, eF] if e else [
-                        [Step('scan(R)')], [e0, eT, eF], None]
+                        [Step('scan(R)')], [e0, eT, eF], []]
                     bestcost = cost
             self.Memo[key] = bestplan
             return bestplan
+
+    def TDACB(self, e: list[Step], Bxp: BooleanExp, Asg: list[Assignment], branch: bool, b: int):
+        memoKey = getAsgMemoKey(Asg)
+        LB = self.LBMemo[memoKey] if memoKey in self.LBMemo else 0
+        if memoKey in self.Memo:
+            plan = self.Memo[memoKey]
+            if (self.Cost(plan) <= b):
+                return plan
+        if LB >= b:
+            return None
+        if LB > 0:
+            b = max(b, LB*2)
+            return None
+        bestcost = math.inf
+        bestplan = None
+        if b >= 0:
+            for p in Bxp.getPredicates():
+                print(p.alias)
+                e0 = self.BuildPlan(p, e, branch)
+                b_ = min(b, bestcost) - self.Cost(e0)
+                A = Assignment(p, True)
+                eT = self.TDACB(e0, Bxp.applyAsg(A), Asg+[A], True, b_)
+                if (eT != None):
+                    b_ = b_ - self.Cost(eT)
+                    A = Assignment(p, False)
+                    eF = self.TDACB(e0, Bxp.applyAsg(A), Asg+[A], False, b_)
+                    if (eF != None):
+                        cost = self.Cost(e0) + self.Cost(eT) + self.Cost(eF)
+                        if bestplan == None or bestcost > cost:
+                            bestplan = [e0, eT, eF] if e else [
+                                [Step('scan(R)')], [e0, eT, eF], []]
+                            bestcost = cost
+        if bestplan and len(bestplan) == 3 and (bestplan[1] == None or bestplan[2] == None):
+            self.LBMemo[memoKey] = b
+            return None
+        self.Memo[memoKey] = bestplan
+        return self.Memo[memoKey]
 
     def genPlan(self, algorithm: str, query: str, queryType="dnf"):
         Bxp = getBxpFromQueryStr(query, queryType)
@@ -158,6 +194,9 @@ class DBMS:
             case "TDSimMemo":
                 self.bestPlan = self.TDSimMemo(
                     e=None, Bxp=Bxp, Asg=[], branch=None)
+            case "TDACB":
+                self.bestPlan = self.TDACB(
+                    e=None, Bxp=Bxp, Asg=[], branch=None, b=10e5)
         return self.bestPlan
 
     result = []  # For executePlan()
@@ -234,13 +273,19 @@ if __name__ == "__main__":
     DNFqueryStr = "(c0 > 2450 AND c1 >= 172) OR c2=28"
 
     db = DBMS()
-    dnf_plan = db.genPlan(
+    print("TDSimMemo Plan:")
+    tdsim_plan = db.genPlan(
         algorithm="TDSimMemo", query=DNFqueryStr, queryType="dnf")
-    # db.showPlan(dnf_plan)
+    db.showPlan(tdsim_plan)
+    
+    print("TDACB Plan:")
+    acb_plan = db.genPlan(
+        algorithm="TDACB", query=DNFqueryStr, queryType="dnf")
+    db.showPlan(acb_plan)
     # print(dnf_plan)
-    result, cols = db.executePlan(db.bestPlan)
+    # result, cols = db.executePlan(db.bestPlan)
     # print(result, cols)
-    db.showResult(result, cols)
+    # db.showResult(result, cols)
     # for p in plans:
     #     print("+"*20)
     #     db.showPlan(p)
